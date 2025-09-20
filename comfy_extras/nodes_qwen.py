@@ -1,24 +1,29 @@
 import node_helpers
 import comfy.utils
 import math
+from typing_extensions import override
+from comfy_api.latest import ComfyExtension, io
 
 
-class TextEncodeQwenImageEdit:
+class TextEncodeQwenImageEdit(io.ComfyNode):
     @classmethod
-    def INPUT_TYPES(s):
-        return {"required": {
-            "clip": ("CLIP", ),
-            "prompt": ("STRING", {"multiline": True, "dynamicPrompts": True}),
-            },
-            "optional": {"vae": ("VAE", ),
-                         "image": ("IMAGE", ),}}
+    def define_schema(cls):
+        return io.Schema(
+            node_id="TextEncodeQwenImageEdit",
+            category="advanced/conditioning",
+            inputs=[
+                io.Clip.Input("clip"),
+                io.String.Input("prompt", multiline=True, dynamic_prompts=True),
+                io.Vae.Input("vae", optional=True),
+                io.Image.Input("image", optional=True),
+            ],
+            outputs=[
+                io.Conditioning.Output(),
+            ],
+        )
 
-    RETURN_TYPES = ("CONDITIONING",)
-    FUNCTION = "encode"
-
-    CATEGORY = "advanced/conditioning"
-
-    def encode(self, clip, prompt, vae=None, image=None):
+    @classmethod
+    def execute(cls, clip, prompt, vae=None, image=None) -> io.NodeOutput:
         ref_latent = None
         if image is None:
             images = []
@@ -40,9 +45,16 @@ class TextEncodeQwenImageEdit:
         conditioning = clip.encode_from_tokens_scheduled(tokens)
         if ref_latent is not None:
             conditioning = node_helpers.conditioning_set_values(conditioning, {"reference_latents": [ref_latent]}, append=True)
-        return (conditioning, )
+        return io.NodeOutput(conditioning)
 
 
-NODE_CLASS_MAPPINGS = {
-    "TextEncodeQwenImageEdit": TextEncodeQwenImageEdit,
-}
+class QwenExtension(ComfyExtension):
+    @override
+    async def get_node_list(self) -> list[type[io.ComfyNode]]:
+        return [
+            TextEncodeQwenImageEdit,
+        ]
+
+
+async def comfy_entrypoint() -> QwenExtension:
+    return QwenExtension()
