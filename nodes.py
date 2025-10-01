@@ -2340,39 +2340,58 @@ async def init_builtin_extra_nodes():
     return import_failed
 
 
-async def init_builtin_api_nodes():
-    api_nodes_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy_api_nodes")
-    api_nodes_files = [
-        "nodes_ideogram.py",
-        "nodes_openai.py",
-        "nodes_minimax.py",
-        "nodes_veo2.py",
-        "nodes_kling.py",
-        "nodes_bfl.py",
-        "nodes_bytedance.py",
-        "nodes_luma.py",
-        "nodes_recraft.py",
-        "nodes_pixverse.py",
-        "nodes_stability.py",
-        "nodes_pika.py",
-        "nodes_runway.py",
-        "nodes_tripo.py",
-        "nodes_moonvalley.py",
-        "nodes_rodin.py",
-        "nodes_gemini.py",
-        "nodes_vidu.py",
-        "nodes_wan.py",
-    ]
+async def init_api_nodes_package():
+    """
+    Initialize ComfyUI API nodes from the external pip package `comfy-api-nodes`.
 
-    if not await load_custom_node(os.path.join(api_nodes_dir, "canary.py"), module_parent="comfy_api_nodes"):
-        return api_nodes_files
+    Behavior:
+      - Imports `custom_nodes_list` from the package.
+      - Calls it to obtain a list of tuples:
+            list[tuple[AbsolutePathToNodeFile, ModuleParent]]
+      - Loads entries strictly in the order provided by the package.
+      - Returns a list of basenames for nodes that failed to import.
 
-    import_failed = []
-    for node_file in api_nodes_files:
-        if not await load_custom_node(os.path.join(api_nodes_dir, node_file), module_parent="comfy_api_nodes"):
-            import_failed.append(node_file)
+    Returns:
+        list[str]: Filenames of nodes that failed to import
+                   (e.g. ["nodes_openai.py", ...]),
+                   or a single-element list with an error message if importing
+                   the package or calling the function fails.
+    """
+    try:
+        from comfy_api_nodes import custom_nodes_list
+    except Exception as e:
+        error = f"Required package 'comfy-api-nodes' is not installed or failed to import: {e}"
+        logging.error(error)
+        return [error]
+
+    try:
+        node_entries = custom_nodes_list()
+    except Exception as e:
+        error = f"custom_nodes_list() raised an error: {e}"
+        logging.error(error)
+        return [error]
+
+    if not isinstance(node_entries, list):
+        error = "custom_nodes_list() did not return a list."
+        logging.error(error)
+        return [error]
+
+    import_failed: list[str] = []
+    for module_path, module_parent in node_entries:
+        if not os.path.exists(module_path):
+            logging.warning(f"API node path does not exist: {module_path}")
+            import_failed.append(os.path.basename(module_path))
+            continue
+        try:
+            ok = await load_custom_node(module_path, module_parent=module_parent)
+            if not ok:
+                import_failed.append(os.path.basename(module_path))
+        except Exception as e:
+            logging.warning(f"Exception while importing API node '{module_path}': {e}")
+            import_failed.append(os.path.basename(module_path))
 
     return import_failed
+
 
 async def init_public_apis():
     register_versions([
@@ -2389,7 +2408,7 @@ async def init_extra_nodes(init_custom_nodes=True, init_api_nodes=True):
 
     import_failed_api = []
     if init_api_nodes:
-        import_failed_api = await init_builtin_api_nodes()
+        import_failed_api = await init_api_nodes_package()
 
     if init_custom_nodes:
         await init_external_custom_nodes()

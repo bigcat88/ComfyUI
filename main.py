@@ -14,6 +14,7 @@ import sys
 from comfy_execution.progress import get_progress_state
 from comfy_execution.utils import get_executing_context
 from comfy_api import feature_flags
+from core_pkg_updater import update_comfy_core_packages_on_startup
 
 if __name__ == "__main__":
     #NOTE: These do not do anything on core ComfyUI, they are for custom nodes.
@@ -307,6 +308,8 @@ def start_comfyui(asyncio_loop=None):
             new_updater.update_windows_updater()
         except:
             pass
+
+    update_comfy_core_packages_on_startup(comfyui_version.__version__, args)
 
     if not asyncio_loop:
         asyncio_loop = asyncio.new_event_loop()
