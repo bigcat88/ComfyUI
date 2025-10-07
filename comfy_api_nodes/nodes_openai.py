@@ -1,5 +1,5 @@
 import io
-from typing import TypedDict, Optional, Tuple
+from typing import TypedDict, Optional
 import json
 import os
 import time
@@ -1337,8 +1337,7 @@ NODE_CLASS_MAPPINGS = {
     "OpenAIDalle2": OpenAIDalle2,
     "OpenAIDalle3": OpenAIDalle3,
     "OpenAIGPTImage1": OpenAIGPTImage1,
-    "OpenAISora2TextToVideo": OpenAISora2TextToVideo,
-    "OpenAISora2ImageToVideo": OpenAISora2ImageToVideo,
+    "OpenAIVideoSora2": OpenAIVideoSora2,
     "OpenAIChatNode": OpenAIChatNode,
     "OpenAIInputFiles": OpenAIInputFiles,
     "OpenAIChatConfig": OpenAIChatConfig,
@@ -1348,8 +1347,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "OpenAIDalle2": "OpenAI DALL·E 2",
     "OpenAIDalle3": "OpenAI DALL·E 3",
     "OpenAIGPTImage1": "OpenAI GPT Image 1",
-    "OpenAISora2TextToVideo": "OpenAI Sora 2 • Text to Video",
-    "OpenAISora2ImageToVideo": "OpenAI Sora 2 • Image to Video",
+    "OpenAIVideoSora2": "OpenAI Sora 2 - Video",
     "OpenAIChatNode": "OpenAI ChatGPT",
     "OpenAIInputFiles": "OpenAI ChatGPT Input Files",
     "OpenAIChatConfig": "OpenAI ChatGPT Advanced Options",
