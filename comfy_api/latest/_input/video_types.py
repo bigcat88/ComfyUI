@@ -34,13 +34,13 @@ class VideoInput(ABC):
         """
         pass
 
-    def get_stream_source(self) -> Union[str, io.BytesIO]:
+    def get_stream_source(self) -> Union[str, IO[bytes]]:
         """
         Get a streamable source for the video. This allows processing without
         loading the entire video into memory.
 
         Returns:
-            Either a file path (str) or a BytesIO object that can be opened with av.
+            Either a file path (str) or a binary file-like object (IO[bytes]) that can be opened with av.
 
         Default implementation creates a BytesIO buffer, but subclasses should
         override this for better performance when possible.
