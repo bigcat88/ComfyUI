@@ -8,6 +8,12 @@ import av
 import io
 import json
 import numpy as np
+import contextlib
+import threading
+import tempfile
+import weakref
+import os
+import folder_paths
 import math
 import torch
 from .._util import VideoContainer, VideoCodec, VideoComponents
@@ -52,6 +58,11 @@ def get_open_write_kwargs(
     return open_kwargs
 
 
+def _remove_file(p: str) -> None:
+    with contextlib.suppress(Exception):
+        os.remove(p)
+
+
 class VideoFromFile(VideoInput):
     """
     Class representing video input from a file.
@@ -63,15 +74,33 @@ class VideoFromFile(VideoInput):
         containing the file contents.
         """
         self.__file = file
+        self.__spool_lock = threading.Lock()
+        self.__spool_finalizer: weakref.finalize | None = None
+
+    def _ensure_spooled_path(self) -> str:
+        """If the source is an in-memory BytesIO, write it to a temp file once and return the path."""
+        if isinstance(self.__file, str):
+            return self.__file
+        if not isinstance(self.__file, io.BytesIO):
+            raise TypeError(f"VideoFromFile expected str or io.BytesIO, got {type(self.__file)!r}")
+        with self.__spool_lock:
+            if isinstance(self.__file, str):
+                return self.__file
+            temp_dir = folder_paths.get_temp_directory()
+            fd, path = tempfile.mkstemp(dir=temp_dir, prefix="obj_tmp_", suffix=".video")
+            with os.fdopen(fd, "wb") as f:
+                f.write(self.__file.getbuffer())
+                f.flush()
+            self.__file = path
+            self.__spool_finalizer = weakref.finalize(self, _remove_file, path)
+        return self.__file
 
     def get_stream_source(self) -> str | io.BytesIO:
         """
         Return the underlying file source for efficient streaming.
         This avoids unnecessary memory copies when the source is already a file path.
         """
-        if isinstance(self.__file, io.BytesIO):
-            self.__file.seek(0)
-        return self.__file
+        return self._ensure_spooled_path()
 
     def get_dimensions(self) -> tuple[int, int]:
         """
@@ -80,9 +109,7 @@ class VideoFromFile(VideoInput):
         Returns:
             Tuple of (width, height)
         """
-        if isinstance(self.__file, io.BytesIO):
-            self.__file.seek(0)  # Reset the BytesIO object to the beginning
-        with av.open(self.__file, mode='r') as container:
+        with av.open(self.get_stream_source(), mode='r') as container:
             for stream in container.streams:
                 if stream.type == 'video':
                     assert isinstance(stream, av.VideoStream)
@@ -96,9 +123,7 @@ class VideoFromFile(VideoInput):
         Returns:
             Duration in seconds
         """
-        if isinstance(self.__file, io.BytesIO):
-            self.__file.seek(0)
-        with av.open(self.__file, mode="r") as container:
+        with av.open(self.get_stream_source(), mode="r") as container:
             if container.duration is not None:
                 return float(container.duration / av.time_base)
 
@@ -126,10 +151,7 @@ class VideoFromFile(VideoInput):
         Returns the number of frames in the video without materializing them as
         torch tensors.
         """
-        if isinstance(self.__file, io.BytesIO):
-            self.__file.seek(0)
-
-        with av.open(self.__file, mode="r") as container:
+        with av.open(self.get_stream_source(), mode="r") as container:
             video_stream = self._get_first_video_stream(container)
             # 1. Prefer the frames field if available
             if video_stream.frames and video_stream.frames > 0:
@@ -168,10 +190,7 @@ class VideoFromFile(VideoInput):
         Returns the average frame rate of the video using container metadata
         without decoding all frames.
         """
-        if isinstance(self.__file, io.BytesIO):
-            self.__file.seek(0)
-
-        with av.open(self.__file, mode="r") as container:
+        with av.open(self.get_stream_source(), mode="r") as container:
             video_stream = self._get_first_video_stream(container)
             # Preferred: use PyAV's average_rate (usually already a Fraction-like)
             if video_stream.average_rate:
@@ -193,9 +212,7 @@ class VideoFromFile(VideoInput):
         Returns:
             Container format as string
         """
-        if isinstance(self.__file, io.BytesIO):
-            self.__file.seek(0)
-        with av.open(self.__file, mode='r') as container:
+        with av.open(self.get_stream_source(), mode='r') as container:
             return container.format.name
 
     def get_components_internal(self, container: InputContainer) -> VideoComponents:
@@ -239,9 +256,7 @@ class VideoFromFile(VideoInput):
         return VideoComponents(images=images, audio=audio, frame_rate=frame_rate, metadata=metadata)
 
     def get_components(self) -> VideoComponents:
-        if isinstance(self.__file, io.BytesIO):
-            self.__file.seek(0)  # Reset the BytesIO object to the beginning
-        with av.open(self.__file, mode='r') as container:
+        with av.open(self.get_stream_source(), mode='r') as container:
             return self.get_components_internal(container)
         raise ValueError(f"No video stream found in file '{self.__file}'")
 
@@ -252,9 +267,7 @@ class VideoFromFile(VideoInput):
         codec: VideoCodec = VideoCodec.AUTO,
         metadata: Optional[dict] = None
     ):
-        if isinstance(self.__file, io.BytesIO):
-            self.__file.seek(0)  # Reset the BytesIO object to the beginning
-        with av.open(self.__file, mode='r') as container:
+        with av.open(self.get_stream_source(), mode='r') as container:
             container_format = container.format.name
             video_encoding = container.streams.video[0].codec.name if len(container.streams.video) > 0 else None
             reuse_streams = True
